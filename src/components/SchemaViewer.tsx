@@ -1,4 +1,4 @@
-import { TableDefinition } from '../types'
+import type { TableDefinition } from '../types'
 import { getTypeColor, getRequiredBadge, getTableTypeBadge } from '../utils'
 
 interface SchemaViewerProps {

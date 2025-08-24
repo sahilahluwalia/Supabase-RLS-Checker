@@ -1,4 +1,4 @@
-import type { CheckType, DatabaseTable } from '../types'
+import type { CheckType, DatabaseTable, SecurityStatus } from '../types'
 import { getSecurityBorderColor, getSecurityIcon } from '../utils'
 
 interface AccessStatusProps {
@@ -24,7 +24,7 @@ export const AccessStatus = ({ table, action, onClick }: AccessStatusProps) => {
   }
 
   // Convert DatabaseTable security status to SecurityStatus
-  const convertToSecurityStatus = (table: DatabaseTable) => {
+  const convertToSecurityStatus = (table: DatabaseTable): SecurityStatus => {
     const convertStatus = (status: boolean | null | 'unlikely') => {
       if (status === true) return 'not_secured'
       if (status === false) return 'secured'
