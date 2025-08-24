@@ -51,6 +51,46 @@ Build Tool: Vite
 
 Package Manager: pnpm
 
+## 🚀 Getting Started
+
+
+### Installation
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/sahilahluwalia/supabase-security-checker
+   cd supabase-security-checker
+   ```
+
+2. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
+
+3. **Start the development server**
+   ```bash
+   pnpm dev
+   ```
+
+4. **Open your browser**
+   Navigate to `http://localhost:5173`
+
+### Usage
+
+1. Enter your Supabase Project URL (e.g., `https://your-project.supabase.co`)
+2. Enter your Supabase anon key
+3. Click "Check Security" to start the scan
+4. Review the security report and recommendations
+
+### Available Scripts
+
+```bash
+pnpm dev          # Start development server
+pnpm build        # Build for production
+pnpm preview      # Preview production build
+pnpm lint         # Run ESLint
+```
+
 ## ⚠ Disclaimer
 
 This tool is for educational and security auditing purposes only. Only scan projects you own or have permission to test.
