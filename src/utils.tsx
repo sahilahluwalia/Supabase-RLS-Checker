@@ -216,6 +216,18 @@ export function generateRandomValue(property: TableProperty): string | number | 
         return property.enum[Math.floor(Math.random() * property.enum.length)]
       } else if (property.format.includes('timestamp')) {
         return new Date().toISOString()
+      } else if (property.format === 'uuid') {
+        // Generate a valid UUID v4
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+          const r = Math.random() * 16 | 0
+          const v = c === 'x' ? r : (r & 0x3 | 0x8)
+          return v.toString(16)
+        })
+      } else if (property.format === 'date') {
+        // Generate a valid date string
+        const date = new Date()
+        date.setDate(date.getDate() - Math.floor(Math.random() * 365)) // Random date within last year
+        return date.toISOString().split('T')[0] // YYYY-MM-DD format
       } else {
         return Math.random().toString(36).substring(7)
       }
@@ -234,42 +246,150 @@ export function generateRandomValue(property: TableProperty): string | number | 
 
 /** Attempts to insert a record into `table`. Returns the inserted `object` if able to insert, `null` if not able to insert */
 export async function checkInsertAccessOnTable(supabaseClient: SupabaseClient, table: DatabaseTable): Promise<object | null> {
-  table.checking = 'insert'
-  const recordToInsert = generateDatabaseTableRandomData(table)
-  const { data, error } = await supabaseClient.from(table.name).insert(recordToInsert).select().single()
-  table.checking = null
-  if (error) return null
-  else return data
+  try {
+    console.log(`[INSERT] Starting check for table: ${table.name}`)
+    table.checking = 'insert'
+
+    const recordToInsert = generateDatabaseTableRandomData(table)
+    console.log(`[INSERT] Generated data for ${table.name}:`, recordToInsert)
+
+    const insertResult = await Promise.race([
+      supabaseClient.from(table.name).insert(recordToInsert).select().single(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Insert timeout for ${table.name}`)), 10000)
+      )
+    ])
+
+    const { data, error } = insertResult as { data: unknown; error: unknown }
+
+    if (error) {
+      console.error(`[INSERT] Error for ${table.name}:`, error)
+      table.checking = null
+      return null
+    }
+
+    console.log(`[INSERT] Success for ${table.name}:`, data)
+    table.checking = null
+    return data as object
+  } catch (err) {
+    console.error(`[INSERT] Exception for ${table.name}:`, err)
+    table.checking = null
+    return null
+  }
 }
 
 /** Attempts to read records from `table`. Returns `true` if able to read, `false` if not able to read, `null` if unable to determine */
 export async function checkReadAccessOnTable(supabaseClient: SupabaseClient, table: DatabaseTable): Promise<boolean | null> {
-  table.checking = 'read'
-  const { data, error } = await supabaseClient.from(table.name).select('*')
-  table.checking = null
-  if (error) return false
-  if (data && data.length === 0) return null
-  else return true
+  try {
+    console.log(`[READ] Starting check for table: ${table.name}`)
+    table.checking = 'read'
+
+    const readResult = await Promise.race([
+      supabaseClient.from(table.name).select('*'),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Read timeout for ${table.name}`)), 5000)
+      )
+    ])
+
+    const { data, error } = readResult as { data: unknown; error: unknown }
+
+    if (error) {
+      console.error(`[READ] Error for ${table.name}:`, error)
+      table.checking = null
+      return false
+    }
+
+    const result = data && Array.isArray(data) && data.length === 0 ? null : true
+    console.log(`[READ] Result for ${table.name}: ${result}`)
+    table.checking = null
+    return result
+  } catch (err) {
+    console.error(`[READ] Exception for ${table.name}:`, err)
+    table.checking = null
+    return false
+  }
 }
 
 /** Attempts to update the given `record` on `table`. Returns `true` if able to update, `false` if not able to update, and `null` if unable to determine the primary key */
 export async function checkUpdateAccessOnTable(supabaseClient: SupabaseClient, table: DatabaseTable): Promise<boolean | null> {
-  if (!table.primaryKey) return false
-  if (!table.insertedRecord) return null
-  table.checking = 'update'
-  const { error } = await supabaseClient.from(table.name).update(table.insertedRecord).eq(table.primaryKey, table.insertedRecord[table.primaryKey as keyof typeof table.insertedRecord])
-  table.checking = null
-  if (error) return false
-  else return true
+  try {
+    console.log(`[UPDATE] Starting check for table: ${table.name}`)
+
+    if (!table.primaryKey) {
+      console.log(`[UPDATE] No primary key found for ${table.name}`)
+      return false
+    }
+    if (!table.insertedRecord) {
+      console.log(`[UPDATE] No inserted record found for ${table.name}`)
+      return null
+    }
+
+    table.checking = 'update'
+    console.log(`[UPDATE] Updating record for ${table.name} with primary key: ${table.primaryKey}`)
+
+    const updateResult = await Promise.race([
+      supabaseClient.from(table.name).update(table.insertedRecord).eq(table.primaryKey, table.insertedRecord[table.primaryKey as keyof typeof table.insertedRecord]),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Update timeout for ${table.name}`)), 8000)
+      )
+    ])
+
+    const { error } = updateResult as { error: unknown }
+
+    if (error) {
+      console.error(`[UPDATE] Error for ${table.name}:`, error)
+      table.checking = null
+      return false
+    }
+
+    console.log(`[UPDATE] Success for ${table.name}`)
+    table.checking = null
+    return true
+  } catch (err) {
+    console.error(`[UPDATE] Exception for ${table.name}:`, err)
+    table.checking = null
+    return false
+  }
 }
 
 /** Attempts to delete the given `record` on `table`. Returns `true` if able to delete, `false` if not able to delete, and `null` if unable to determine the primary key */
 export async function checkDeleteAccessOnTable(supabaseClient: SupabaseClient, table: DatabaseTable): Promise<boolean | null> {
-  if (!table.primaryKey) return false
-  if (!table.insertedRecord) return null
-  table.checking = 'delete'
-  const { error } = await supabaseClient.from(table.name).delete().eq(table.primaryKey, table.insertedRecord[table.primaryKey as keyof typeof table.insertedRecord])
-  table.checking = null
-  if (error) return false
-  else return true
+  try {
+    console.log(`[DELETE] Starting check for table: ${table.name}`)
+
+    if (!table.primaryKey) {
+      console.log(`[DELETE] No primary key found for ${table.name}`)
+      return false
+    }
+    if (!table.insertedRecord) {
+      console.log(`[DELETE] No inserted record found for ${table.name}`)
+      return null
+    }
+
+    table.checking = 'delete'
+    console.log(`[DELETE] Deleting record for ${table.name} with primary key: ${table.primaryKey}`)
+
+    const deleteResult = await Promise.race([
+      supabaseClient.from(table.name).delete().eq(table.primaryKey, table.insertedRecord[table.primaryKey as keyof typeof table.insertedRecord]),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Delete timeout for ${table.name}`)), 8000)
+      )
+    ])
+
+    const { error } = deleteResult as { error: unknown }
+
+    if (error) {
+      console.error(`[DELETE] Error for ${table.name}:`, error)
+      table.checking = null
+      return false
+    }
+
+    console.log(`[DELETE] Success for ${table.name}`)
+    table.checking = null
+    return true
+  } catch (err) {
+    console.error(`[DELETE] Exception for ${table.name}:`, err)
+    table.checking = null
+    return false
+  }
 }

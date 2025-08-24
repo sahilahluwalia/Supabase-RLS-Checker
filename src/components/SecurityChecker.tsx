@@ -1,6 +1,5 @@
 
-import type { DatabaseTable, CheckType, TableDefinition, SecurityStatus } from '../types'
-import { getSecurityBorderColor, getSecurityIcon } from '../utils'
+import type { DatabaseTable, CheckType, TableDefinition } from '../types'
 import { AccessStatus } from './AccessStatus'
 
 interface SecurityCheckerProps {
@@ -10,15 +9,32 @@ interface SecurityCheckerProps {
 
   // Server Check Status
   databaseTables: DatabaseTable[]
-  isCheckInProgress: boolean
-  isRetrievingSchema: boolean
-  isSchemaAccessBlocked: boolean
-  isCheckComplete: boolean
-  isCurrentlyChecking: CheckType | null
-  errorMessage: string | null
+  checkStatus: {
+    isCheckInProgress: boolean
+    isRetrievingSchema: boolean
+    isSchemaAccessBlocked: boolean
+    isCheckComplete: boolean
+    isCurrentlyChecking: CheckType | null
+    errorMessage: string | null
+  }
 
   // Legacy state for schema viewer compatibility
   tablesDefinition: TableDefinition[]
+
+  // Progress tracking
+  overallProgress: {
+    currentOperation: CheckType | null
+    completedOperations: CheckType[]
+    totalOperations: number
+    totalTables: number
+    processedTables: number
+    operationProgress: {
+      read: { completed: number; total: number }
+      insert: { completed: number; total: number }
+      update: { completed: number; total: number }
+      delete: { completed: number; total: number }
+    }
+  }
 
   // Functions
   doSupaCheck: () => void
@@ -33,13 +49,9 @@ export const SecurityChecker = ({
   supaUrl,
   supaKey,
   databaseTables,
-  isCheckInProgress,
-  isRetrievingSchema,
-  isSchemaAccessBlocked,
-  isCheckComplete,
-  isCurrentlyChecking,
-  errorMessage,
+  checkStatus,
   tablesDefinition,
+  overallProgress,
   doSupaCheck,
   goBack,
   checkSingleOperation,
@@ -47,22 +59,34 @@ export const SecurityChecker = ({
   setSupaUrl,
   setSupaKey
 }: SecurityCheckerProps) => {
-  // Helper function to convert DatabaseTable security status to SecurityStatus
-  const convertToSecurityStatus = (table: DatabaseTable): SecurityStatus => {
-    const convertStatus = (status: boolean | null | 'unlikely') => {
-      if (status === true) return 'not_secured'
-      if (status === false) return 'secured'
-      if (status === 'unlikely') return 'probably_secured'
-      return 'unknown'
-    }
+  // Helper function to calculate overall progress
+  const calculateOverallProgress = (): number => {
+    const completedOperationsProgress = (overallProgress.completedOperations.length / overallProgress.totalOperations) * 100
+    const currentOperationProgress = overallProgress.currentOperation
+      ? (overallProgress.operationProgress[overallProgress.currentOperation].completed /
+         overallProgress.operationProgress[overallProgress.currentOperation].total) * (100 / overallProgress.totalOperations)
+      : 0
 
-    return {
-      read: convertStatus(table.read),
-      insert: convertStatus(table.insert),
-      update: convertStatus(table.update),
-      delete: convertStatus(table.delete)
-    }
+    return Math.round(completedOperationsProgress + currentOperationProgress)
   }
+
+  // Helper function to get current operation progress
+  const getOperationProgress = (): number => {
+    if (!overallProgress.currentOperation) return 0
+
+    const progress = overallProgress.operationProgress[overallProgress.currentOperation]
+    return Math.round((progress.completed / progress.total) * 100)
+  }
+
+  // Helper function to get operation details
+  const getOperationDetails = (): string => {
+    if (!overallProgress.currentOperation) return ''
+
+    const progress = overallProgress.operationProgress[overallProgress.currentOperation]
+    return `${progress.completed} of ${progress.total} tables processed`
+  }
+
+
 
   return (
     <div className="bg-gray-100">
@@ -81,11 +105,11 @@ export const SecurityChecker = ({
           </div>
 
           {/* Top Action Buttons - Only show after check is complete */}
-          {isCheckComplete && (
+          {checkStatus.isCheckComplete && (
             <div className="flex flex-col sm:flex-row gap-4 mb-8">
               <button
                 onClick={goBack}
-                disabled={!!isCurrentlyChecking}
+                disabled={!!checkStatus.isCurrentlyChecking}
                 className="flex items-center justify-center gap-3 px-8 py-4 bg-blue-600 text-white font-bold uppercase tracking-wide border-2 border-blue-700 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-400 transition-colors"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -109,7 +133,7 @@ export const SecurityChecker = ({
         </div>
 
         {/* Not Checking - Input Form */}
-        {!isCheckInProgress && !isCheckComplete && (
+        {!checkStatus.isCheckInProgress && !checkStatus.isCheckComplete && (
           <div className="bg-white border-2 border-gray-400 p-8 mb-8">
             <div className="mb-8">
               <h2 className="text-xl font-bold text-gray-900 mb-3 uppercase tracking-wide border-b-2 border-gray-300 pb-2">Database Configuration</h2>
@@ -148,7 +172,7 @@ export const SecurityChecker = ({
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <button
                 onClick={doSupaCheck}
-                disabled={isCheckInProgress || !supaUrl || !supaKey}
+                disabled={checkStatus.isCheckInProgress || !supaUrl || !supaKey}
                 className="flex items-center justify-center gap-3 px-8 py-4 bg-blue-600 text-white font-bold uppercase tracking-wide border-2 border-blue-700 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-400 transition-colors"
               >
                 <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -157,13 +181,13 @@ export const SecurityChecker = ({
                 Check Security
               </button>
             </div>
-            {errorMessage && (
+            {checkStatus.errorMessage && (
               <div className="mt-6 p-4 bg-red-100 border-2 border-red-500 text-red-900 font-medium">
                 <div className="flex items-center gap-2">
                   <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
                   </svg>
-                  {errorMessage}
+                  {checkStatus.errorMessage}
                 </div>
               </div>
             )}
@@ -171,10 +195,10 @@ export const SecurityChecker = ({
         )}
 
         {/* Checking in Progress */}
-        {(isCheckInProgress || isCheckComplete) && (
+        {(checkStatus.isCheckInProgress || checkStatus.isCheckComplete) && (
           <div>
             {/* If Schema Access was Blocked */}
-            {isSchemaAccessBlocked && (
+            {checkStatus.isSchemaAccessBlocked && (
               <div className="bg-yellow-50 border-2 border-yellow-400 p-8 mb-8">
                 <div className="text-center">
                   <svg className="mx-auto h-16 w-16 text-yellow-600 mb-6" fill="none" stroke="currentColor" viewBox="0 0 48 48">
@@ -187,7 +211,7 @@ export const SecurityChecker = ({
                   </p>
                   <button
                     onClick={goBack}
-                    disabled={isCheckInProgress}
+                    disabled={checkStatus.isCheckInProgress}
                     className="inline-flex items-center gap-3 px-8 py-4 bg-blue-600 text-white font-bold uppercase tracking-wide border-2 border-blue-700 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed disabled:border-gray-400 transition-colors"
                   >
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -200,23 +224,103 @@ export const SecurityChecker = ({
             )}
 
             {/* Getting Tables / Checking */}
-            {!isSchemaAccessBlocked && (
+            {!checkStatus.isSchemaAccessBlocked && (
               <>
-                {!isCheckComplete && (
-                  <div className="w-full flex flex-row items-center justify-center mb-12 p-8 bg-white border-2 border-gray-300">
-                    <div className="flex-shrink-0 flex items-center justify-center h-full">
-                      <svg className="animate-spin h-16 w-16 text-blue-600" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                    </div>
-                    <div className="flex flex-col items-center justify-center ml-8">
-                      <div className="text-xl font-bold text-gray-900 uppercase tracking-wide text-center">
-                        {isRetrievingSchema && 'Retrieving Database Tables...'}
-                        {isCurrentlyChecking && `Testing ${isCurrentlyChecking} Access...`}
+                {!checkStatus.isCheckComplete && (
+                  <div className="w-full mb-12 space-y-4">
+                    {/* Main Progress Indicator */}
+                    <div className="flex flex-row items-center justify-center p-8 bg-white border-2 border-gray-300">
+                      <div className="flex-shrink-0 flex items-center justify-center h-full">
+                        <svg className="animate-spin h-16 w-16 text-blue-600" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
                       </div>
-                      <div className="mt-4 text-base text-gray-600 font-medium text-center">
-                        This may take a few moments
+                      <div className="flex flex-col items-center justify-center ml-8">
+                        <div className="text-xl font-bold text-gray-900 uppercase tracking-wide text-center">
+                          {checkStatus.isRetrievingSchema && 'Retrieving Database Tables...'}
+                          {checkStatus.isCurrentlyChecking && `Testing ${checkStatus.isCurrentlyChecking} Access...`}
+                        </div>
+                        <div className="mt-4 text-base text-gray-600 font-medium text-center">
+                          {checkStatus.isRetrievingSchema && 'This may take a few moments'}
+                          {checkStatus.isCurrentlyChecking && 'Processing security checks...'}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Enhanced Progress Indicator */}
+                    <div className="bg-gray-50 border border-gray-300 p-4">
+                      {/* Overall Progress */}
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="text-sm font-medium text-gray-700">
+                          Security Check Progress
+                        </div>
+                        <div className="text-sm font-semibold text-gray-900">
+                          {calculateOverallProgress()}% Complete
+                        </div>
+                      </div>
+
+                      {/* Progress Bar */}
+                      <div className="w-full bg-gray-200 h-3 mb-3">
+                        <div
+                          className="bg-gradient-to-r from-blue-500 to-green-500 h-3 transition-all duration-300 ease-out"
+                          style={{ width: `${calculateOverallProgress()}%` }}
+                        ></div>
+                      </div>
+
+                      {/* Current Operation Progress */}
+                      {overallProgress.currentOperation && (
+                        <div className="mb-3 p-3 bg-white border border-gray-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="text-sm font-medium text-gray-700 capitalize">
+                              {overallProgress.currentOperation} Access Check
+                            </div>
+                            <div className="text-xs text-gray-600">
+                              {getOperationProgress()}% of operation
+                            </div>
+                          </div>
+                          <div className="w-full bg-gray-200 h-2">
+                            <div
+                              className="bg-blue-500 h-2 transition-all duration-300"
+                              style={{ width: `${getOperationProgress()}%` }}
+                            ></div>
+                          </div>
+                          <div className="mt-1 text-xs text-gray-600">
+                            {getOperationDetails()}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Operation Status */}
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {(['read', 'insert', 'update', 'delete'] as const).map(operation => {
+                          const isCompleted = overallProgress.completedOperations.includes(operation)
+                          const isCurrent = overallProgress.currentOperation === operation
+                          const progress = overallProgress.operationProgress[operation]
+
+                          return (
+                            <div
+                              key={operation}
+                              className={`p-2 border capitalize ${
+                                isCompleted
+                                  ? 'bg-green-50 border-green-300 text-green-700'
+                                  : isCurrent
+                                  ? 'bg-blue-50 border-blue-300 text-blue-700'
+                                  : 'bg-gray-50 border-gray-200 text-gray-600'
+                              }`}
+                            >
+                              <div className="font-medium">{operation}</div>
+                              <div className="text-xs">
+                                {isCompleted
+                                  ? '✓ Complete'
+                                  : isCurrent
+                                  ? `${Math.round((progress.completed / progress.total) * 100)}%`
+                                  : 'Pending'
+                                }
+                              </div>
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   </div>
@@ -323,6 +427,7 @@ export const SecurityChecker = ({
                                   table={table}
                                   action="read"
                                   onClick={() => checkSingleOperation(table, 'read')}
+                                  isCurrentlyChecking={checkStatus.isCurrentlyChecking}
                                 />
                               </td>
                               <td className="px-8 py-6 whitespace-nowrap text-center border-r border-gray-300">
@@ -330,6 +435,7 @@ export const SecurityChecker = ({
                                   table={table}
                                   action="insert"
                                   onClick={() => checkSingleOperation(table, 'insert')}
+                                  isCurrentlyChecking={checkStatus.isCurrentlyChecking}
                                 />
                               </td>
                               <td className="px-8 py-6 whitespace-nowrap text-center border-r border-gray-300">
@@ -337,12 +443,16 @@ export const SecurityChecker = ({
                                   table={table}
                                   action="update"
                                   onClick={() => checkSingleOperation(table, 'update')}
+                                  isCurrentlyChecking={checkStatus.isCurrentlyChecking}
                                 />
                               </td>
                               <td className="px-8 py-6 whitespace-nowrap text-center">
-                                <div className={`inline-flex items-center  justify-center w-12 h-12 border-2 ${getSecurityBorderColor(convertToSecurityStatus(table).delete)} bg-gray-50`}>
-                                  {getSecurityIcon(convertToSecurityStatus(table).delete)}
-                                </div>
+                                <AccessStatus
+                                  table={table}
+                                  action="delete"
+                                  onClick={() => checkSingleOperation(table, 'delete')}
+                                  isCurrentlyChecking={checkStatus.isCurrentlyChecking}
+                                />
                               </td>
                             </tr>
                           ))}

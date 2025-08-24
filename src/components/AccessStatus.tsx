@@ -7,8 +7,8 @@ interface AccessStatusProps {
   onClick: () => void
 }
 
-export const AccessStatus = ({ table, action, onClick }: AccessStatusProps) => {
-  const isLoading = table.checking === action
+export const AccessStatus = ({ table, action, onClick, isCurrentlyChecking }: AccessStatusProps & { isCurrentlyChecking: CheckType | null }) => {
+  const isLoading = table.checking === action || isCurrentlyChecking === action
 
   if (isLoading) {
     return (
@@ -45,7 +45,7 @@ export const AccessStatus = ({ table, action, onClick }: AccessStatusProps) => {
   return (
     <button
       onClick={onClick}
-      disabled={!!table.checking}
+      disabled={!!table.checking || !!isCurrentlyChecking}
       className={`inline-flex items-center justify-center w-12 h-12 border-2 bg-gray-50 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${getSecurityBorderColor(securityStatus[action])}`}
     >
       {getSecurityIcon(securityStatus[action])}
