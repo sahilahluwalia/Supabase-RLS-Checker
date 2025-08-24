@@ -30,7 +30,6 @@ Then visit `http://localhost:5173`
 
 - **Frontend:** React 19, TypeScript, TailwindCSS
 - **Build Tool:** Vite
-- **Database:** Supabase
 - **Package Manager:** pnpm
 
 ## Security
